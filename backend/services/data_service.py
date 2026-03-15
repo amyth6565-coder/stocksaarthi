@@ -1,10 +1,22 @@
 import yfinance as yf
 import pandas as pd
+import requests
 from typing import Optional
+
+def _get_session():
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+    })
+    return session
 
 def get_ticker(symbol: str, exchange: str = "NSE") -> yf.Ticker:
     suffix = ".NS" if exchange.upper() == "NSE" else ".BO"
-    return yf.Ticker(f"{symbol.upper()}{suffix}")
+    return yf.Ticker(f"{symbol.upper()}{suffix}", session=_get_session())
 
 def fetch_price_history(symbol: str, period: str = "6mo", exchange: str = "NSE") -> pd.DataFrame:
     try:
