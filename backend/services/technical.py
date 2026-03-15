@@ -1,165 +1,166 @@
+"""
+services/technical.py
+Pure pandas/numpy implementation of all technical indicators.
+No pandas-ta dependency.
+"""
 import pandas as pd
-import pandas_ta as ta
-from typing import Optional
+import numpy as np
 
-def calculate_indicators(hist: pd.DataFrame) -> dict:
-    if hist.empty or len(hist) < 20:
-        return {"error": "Not enough price history"}
-    df = hist.copy()
-    df.ta.rsi(length=14, append=True)
-    df.ta.macd(fast=12, slow=26, signal=9, append=True)
-    df.ta.ema(length=20, append=True)
-    df.ta.ema(length=50, append=True)
-    df.ta.ema(length=200, append=True)
-    df.ta.bbands(length=20, std=2, append=True)
-    df.ta.stoch(k=14, d=3, append=True)
+def calculate_indicators(df: pd.DataFrame) -> dict:
+    if df is None or len(df) < 20:
+        return {"error": "Insufficient data"}
 
-    rsi = _last(df, "RSI_14")
-    macd = _last(df, "MACD_12_26_9")
-    macd_signal = _last(df, "MACDs_12_26_9")
-    macd_hist = _last(df, "MACDh_12_26_9")
-    ema20 = _last(df, "EMA_20")
-    ema50 = _last(df, "EMA_50")
-    ema200 = _last(df, "EMA_200")
-    bb_upper = _last(df, "BBU_20_2.0")
-    bb_mid = _last(df, "BBM_20_2.0")
-    bb_lower = _last(df, "BBL_20_2.0")
-    stoch_k = _last(df, "STOCHk_14_3_3")
-    stoch_d = _last(df, "STOCHd_14_3_3")
+    close = df["Close"].squeeze()
+    high = df["High"].squeeze()
+    low = df["Low"].squeeze()
+    volume = df["Volume"].squeeze()
 
-    avg_vol = float(df["Volume"].tail(20).mean()) if "Volume" in df.columns else None
-    last_vol = float(df["Volume"].iloc[-1]) if "Volume" in df.columns else None
-    vol_ratio = round(last_vol / avg_vol, 2) if avg_vol and avg_vol > 0 else None
-    close = float(df["Close"].iloc[-1])
-    high_52w = float(df["High"].tail(252).max()) if len(df) >= 50 else float(df["High"].max())
-    low_52w = float(df["Low"].tail(252).min()) if len(df) >= 50 else float(df["Low"].min())
+    # ── RSI ──────────────────────────────────────────────────────────────────
+    def rsi(series, period=14):
+        delta = series.diff()
+        gain = delta.clip(lower=0).rolling(period).mean()
+        loss = (-delta.clip(upper=0)).rolling(period).mean()
+        rs = gain / loss.replace(0, np.nan)
+        return 100 - (100 / (1 + rs))
 
-    indicators = {
-        "close": round(close, 2),
-        "high_52w": round(high_52w, 2),
-        "low_52w": round(low_52w, 2),
-        "rsi": {"value": round(rsi, 1) if rsi else None, "signal": _rsi_signal(rsi)},
-        "macd": {
-            "value": round(macd, 2) if macd else None,
-            "signal_line": round(macd_signal, 2) if macd_signal else None,
-            "histogram": round(macd_hist, 2) if macd_hist else None,
-            "signal": _macd_signal(macd, macd_signal),
-        },
-        "ema": {
-            "ema20": round(ema20, 2) if ema20 else None,
-            "ema50": round(ema50, 2) if ema50 else None,
-            "ema200": round(ema200, 2) if ema200 else None,
-            "signal": _ema_signal(close, ema20, ema50, ema200),
-            "above_ema20": close > ema20 if ema20 else None,
-            "above_ema50": close > ema50 if ema50 else None,
-            "above_ema200": close > ema200 if ema200 else None,
-        },
-        "bollinger": {
-            "upper": round(bb_upper, 2) if bb_upper else None,
-            "mid": round(bb_mid, 2) if bb_mid else None,
-            "lower": round(bb_lower, 2) if bb_lower else None,
-            "signal": _bb_signal(close, bb_upper, bb_lower, bb_mid),
-        },
-        "stochastic": {
-            "k": round(stoch_k, 1) if stoch_k else None,
-            "d": round(stoch_d, 1) if stoch_d else None,
-            "signal": _stoch_signal(stoch_k, stoch_d),
-        },
-        "volume": {
-            "last": int(last_vol) if last_vol else None,
-            "avg_20d": int(avg_vol) if avg_vol else None,
-            "ratio": vol_ratio,
-            "signal": _volume_signal(vol_ratio),
-        },
+    # ── MACD ─────────────────────────────────────────────────────────────────
+    def macd(series, fast=12, slow=26, signal=9):
+        ema_fast = series.ewm(span=fast, adjust=False).mean()
+        ema_slow = series.ewm(span=slow, adjust=False).mean()
+        macd_line = ema_fast - ema_slow
+        signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+        histogram = macd_line - signal_line
+        return macd_line, signal_line, histogram
+
+    # ── Bollinger Bands ───────────────────────────────────────────────────────
+    def bollinger(series, period=20, std=2):
+        mid = series.rolling(period).mean()
+        sigma = series.rolling(period).std()
+        return mid + std * sigma, mid, mid - std * sigma
+
+    # ── Stochastic ────────────────────────────────────────────────────────────
+    def stochastic(high, low, close, k=14, d=3):
+        lowest_low = low.rolling(k).min()
+        highest_high = high.rolling(k).max()
+        k_line = 100 * (close - lowest_low) / (highest_high - lowest_low).replace(0, np.nan)
+        d_line = k_line.rolling(d).mean()
+        return k_line, d_line
+
+    # ── ATR ───────────────────────────────────────────────────────────────────
+    def atr(high, low, close, period=14):
+        tr = pd.concat([
+            high - low,
+            (high - close.shift()).abs(),
+            (low - close.shift()).abs()
+        ], axis=1).max(axis=1)
+        return tr.rolling(period).mean()
+
+    # Calculate all
+    rsi_val = rsi(close)
+    macd_line, signal_line, histogram = macd(close)
+    bb_upper, bb_mid, bb_lower = bollinger(close)
+    stoch_k, stoch_d = stochastic(high, low, close)
+    atr_val = atr(high, low, close)
+
+    ema20 = close.ewm(span=20, adjust=False).mean()
+    ema50 = close.ewm(span=50, adjust=False).mean()
+    ema200 = close.ewm(span=200, adjust=False).mean()
+    vol_ma20 = volume.rolling(20).mean()
+
+    def safe(series):
+        val = series.iloc[-1] if hasattr(series, 'iloc') else series
+        if pd.isna(val):
+            return None
+        return round(float(val), 4)
+
+    current_price = safe(close)
+    current_volume = safe(volume)
+    avg_volume = safe(vol_ma20)
+
+    # ── Signals ───────────────────────────────────────────────────────────────
+    rsi_now = safe(rsi_val)
+    macd_now = safe(macd_line)
+    signal_now = safe(signal_line)
+    hist_now = safe(histogram)
+    stoch_k_now = safe(stoch_k)
+    bb_upper_now = safe(bb_upper)
+    bb_lower_now = safe(bb_lower)
+    ema20_now = safe(ema20)
+    ema50_now = safe(ema50)
+    ema200_now = safe(ema200)
+
+    signals = []
+    score = 0
+
+    if rsi_now:
+        if rsi_now < 30:
+            signals.append("RSI oversold — potential buy zone")
+            score += 2
+        elif rsi_now > 70:
+            signals.append("RSI overbought — caution advised")
+            score -= 2
+        else:
+            signals.append(f"RSI neutral at {rsi_now}")
+            score += 1
+
+    if macd_now and signal_now:
+        if macd_now > signal_now:
+            signals.append("MACD bullish crossover")
+            score += 2
+        else:
+            signals.append("MACD bearish — momentum weakening")
+            score -= 1
+
+    if current_price and ema20_now and ema50_now:
+        if current_price > ema20_now > ema50_now:
+            signals.append("Price above EMA20 & EMA50 — uptrend")
+            score += 2
+        elif current_price < ema20_now:
+            signals.append("Price below EMA20 — short-term weakness")
+            score -= 1
+
+    if current_price and ema200_now:
+        if current_price > ema200_now:
+            signals.append("Above EMA200 — long-term bullish")
+            score += 1
+        else:
+            signals.append("Below EMA200 — long-term bearish")
+            score -= 1
+
+    if current_price and bb_lower_now and bb_upper_now:
+        if current_price < bb_lower_now:
+            signals.append("Near Bollinger lower band — oversold")
+            score += 1
+        elif current_price > bb_upper_now:
+            signals.append("Near Bollinger upper band — overbought")
+            score -= 1
+
+    if current_volume and avg_volume:
+        vol_ratio = current_volume / avg_volume if avg_volume > 0 else 1
+        if vol_ratio > 1.5:
+            signals.append(f"High volume ({round(vol_ratio,1)}x avg) — strong conviction")
+            score += 1
+
+    # Technical score 0-10
+    tech_score = max(0, min(10, score + 5))
+
+    return {
+        "currentPrice": current_price,
+        "rsi": rsi_now,
+        "macd": macd_now,
+        "macdSignal": signal_now,
+        "macdHistogram": hist_now,
+        "ema20": ema20_now,
+        "ema50": ema50_now,
+        "ema200": ema200_now,
+        "bbUpper": bb_upper_now,
+        "bbMid": safe(bb_mid),
+        "bbLower": bb_lower_now,
+        "stochK": stoch_k_now,
+        "stochD": safe(stoch_d),
+        "atr": safe(atr_val),
+        "volume": current_volume,
+        "avgVolume": avg_volume,
+        "signals": signals,
+        "technicalScore": tech_score,
     }
-    score, summary = _compute_tech_score(indicators)
-    indicators["technical_score"] = score
-    indicators["technical_summary"] = summary
-
-    chart_data = []
-    for idx, row in df.tail(90).iterrows():
-        chart_data.append({
-            "date": idx.strftime("%Y-%m-%d"),
-            "open": round(float(row["Open"]), 2),
-            "high": round(float(row["High"]), 2),
-            "low": round(float(row["Low"]), 2),
-            "close": round(float(row["Close"]), 2),
-            "volume": int(row["Volume"]) if "Volume" in row else 0,
-        })
-    indicators["chart_data"] = chart_data
-    return indicators
-
-def _last(df, col):
-    if col in df.columns:
-        val = df[col].dropna()
-        if not val.empty:
-            return float(val.iloc[-1])
-    return None
-
-def _rsi_signal(rsi):
-    if rsi is None: return "N/A"
-    if rsi >= 70: return "OVERBOUGHT"
-    if rsi <= 30: return "OVERSOLD"
-    if rsi >= 55: return "BULLISH"
-    if rsi <= 45: return "BEARISH"
-    return "NEUTRAL"
-
-def _macd_signal(macd, signal):
-    if macd is None or signal is None: return "N/A"
-    if macd > signal and macd > 0: return "STRONG BULLISH"
-    if macd > signal: return "BULLISH CROSSOVER"
-    if macd < signal and macd < 0: return "STRONG BEARISH"
-    return "BEARISH CROSSOVER"
-
-def _ema_signal(close, ema20, ema50, ema200):
-    above = sum([close > ema20 if ema20 else False, close > ema50 if ema50 else False, close > ema200 if ema200 else False])
-    if above == 3: return "STRONG UPTREND"
-    if above == 2: return "UPTREND"
-    if above == 1: return "MIXED"
-    return "DOWNTREND"
-
-def _bb_signal(close, upper, lower, mid):
-    if None in (upper, lower, mid): return "N/A"
-    if close >= upper: return "OVERBOUGHT"
-    if close <= lower: return "OVERSOLD"
-    if close > mid: return "ABOVE MID — BULLISH"
-    return "BELOW MID — BEARISH"
-
-def _stoch_signal(k, d):
-    if k is None or d is None: return "N/A"
-    if k > 80 and d > 80: return "OVERBOUGHT"
-    if k < 20 and d < 20: return "OVERSOLD"
-    if k > d: return "BULLISH"
-    return "BEARISH"
-
-def _volume_signal(ratio):
-    if ratio is None: return "N/A"
-    if ratio >= 2.0: return "VERY HIGH VOLUME"
-    if ratio >= 1.3: return "HIGH VOLUME"
-    if ratio <= 0.6: return "LOW VOLUME"
-    return "AVERAGE"
-
-def _compute_tech_score(ind):
-    score = 5.0
-    rsi = ind["rsi"]["signal"]
-    macd_s = ind["macd"]["signal"]
-    ema_s = ind["ema"]["signal"]
-    if rsi == "BULLISH": score += 0.5
-    elif rsi == "OVERBOUGHT": score -= 0.5
-    elif rsi == "OVERSOLD": score += 1.0
-    elif rsi == "BEARISH": score -= 0.5
-    if "STRONG BULLISH" in macd_s: score += 1.5
-    elif "BULLISH" in macd_s: score += 0.8
-    elif "STRONG BEARISH" in macd_s: score -= 1.5
-    elif "BEARISH" in macd_s: score -= 0.8
-    if ema_s == "STRONG UPTREND": score += 1.5
-    elif ema_s == "UPTREND": score += 0.8
-    elif ema_s == "DOWNTREND": score -= 1.5
-    elif ema_s == "MIXED": score -= 0.3
-    score = round(max(1.0, min(10.0, score)), 1)
-    if score >= 7.5: summary = "Strong bullish setup"
-    elif score >= 6.0: summary = "Moderately bullish"
-    elif score >= 4.5: summary = "Neutral / mixed signals"
-    elif score >= 3.0: summary = "Moderately bearish"
-    else: summary = "Strong bearish pressure"
-    return score, summary
