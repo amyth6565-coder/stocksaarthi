@@ -33,7 +33,7 @@ def analyse_stock(symbol: str, exchange: str = Query("NSE")):
             "market_cap": fund_raw.get("market_cap"),
         },
         "price": {
-            "current": technicals.get("close"),
+            "current": technicals.get("currentPrice"),
             "prev_close": fund_raw.get("prev_close"),
             "day_change_pct": fund_raw.get("day_change_pct"),
             "week_52_high": fund_raw.get("week_52_high"),
@@ -222,7 +222,7 @@ def compare_stocks(request: CompareRequest):
                 "symbol": sym,
                 "name": fund_raw.get("company_name", sym),
                 "sector": fund_raw.get("sector", "N/A"),
-                "price": technicals.get("close"),
+                "price": technicals.get("currentPrice"),
                 "day_change_pct": fund_raw.get("day_change_pct"),
                 "technical_score": technicals.get("technical_score"),
                 "fundamental_score": fund_score.get("fundamental_score"),
