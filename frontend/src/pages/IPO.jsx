@@ -1,12 +1,7 @@
 // src/pages/IPO.jsx
-// IPO Tracker with 5 tabs: Open | Upcoming | SME | Closed | Listed
-// GMP badge shown on all cards where available
-
 import { useState, useEffect } from "react";
-import api from "../utils/api";
 
 const TABS = ["Open", "Upcoming", "SME", "Closed", "Listed"];
-
 const TAB_ENDPOINTS = {
   Open: "/api/ipo/open",
   Upcoming: "/api/ipo/upcoming",
@@ -15,165 +10,118 @@ const TAB_ENDPOINTS = {
   Listed: "/api/ipo/listed",
 };
 
-// ── GMP Badge ────────────────────────────────────────────────────────────────
 function GmpBadge({ gmp }) {
   if (!gmp) return null;
   const val = gmp.gmp || 0;
   const gain = gmp.listing_gain_pct || 0;
-  const color =
-    val > 20 || gain > 15
-      ? "bg-green-100 text-green-800 border-green-300"
-      : val > 0
-      ? "bg-blue-100 text-blue-800 border-blue-300"
-      : "bg-gray-100 text-gray-500 border-gray-200";
-
+  const color = val > 20 || gain > 15 ? "#00e5a0" : val > 0 ? "#5b8dee" : "var(--muted)";
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${color}`}
-      title="Grey Market Premium (unofficial)"
-    >
-      GMP ₹{val}
-      {gain > 0 && <span className="opacity-75">· {gain}%</span>}
+    <span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"2px 8px",
+      borderRadius:999, fontSize:11, fontWeight:700, border:`1px solid ${color}`, color }}>
+      GMP ₹{val}{gain > 0 && <span style={{opacity:0.75}}> · {gain}%</span>}
     </span>
   );
 }
 
-// ── Type Badge ────────────────────────────────────────────────────────────────
 function TypeBadge({ type }) {
   const isSme = type === "SME";
   return (
-    <span
-      className={`text-xs font-medium px-2 py-0.5 rounded ${
-        isSme ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-      }`}
-    >
+    <span style={{ fontSize:11, fontWeight:600, padding:"2px 8px", borderRadius:4,
+      background: isSme ? "rgba(91,141,238,0.15)" : "rgba(0,229,160,0.1)",
+      color: isSme ? "var(--accent3)" : "var(--accent)" }}>
       {type || "Mainboard"}
     </span>
   );
 }
 
-// ── IPO Card ─────────────────────────────────────────────────────────────────
-function IpoCard({ ipo, tab, onVerdict }) {
-  const name =
-    ipo.companyName || ipo.name || ipo.company || "—";
+function StatBox({ label, value }) {
+  if (!value) return null;
+  return (
+    <div style={{ background:"var(--surface)", border:"1px solid var(--border)",
+      borderRadius:6, padding:"6px 10px" }}>
+      <div style={{ fontSize:10, color:"var(--muted)", marginBottom:2 }}>{label}</div>
+      <div style={{ fontSize:12, fontWeight:700, color:"var(--text)" }}>{value}</div>
+    </div>
+  );
+}
 
-  // SME tab comes from GMP scraper — different shape
+function IpoCard({ ipo, tab, onVerdict }) {
+  const name = ipo.companyName || ipo.name || ipo.company || "—";
+
   if (tab === "SME") {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:shadow-md transition-shadow">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 text-sm leading-tight">{name}</h3>
-            <p className="text-xs text-gray-500 mt-0.5">{ipo.dates || "—"}</p>
+      <div style={{ background:"var(--card)", border:"1px solid var(--border)",
+        borderRadius:12, padding:16, display:"flex", flexDirection:"column", gap:10 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+          <div>
+            <div style={{ fontWeight:700, color:"var(--text)", fontSize:14, lineHeight:1.3 }}>{name}</div>
+            <div style={{ fontSize:11, color:"var(--muted)", marginTop:3 }}>{ipo.dates || "—"}</div>
           </div>
           <TypeBadge type="SME" />
         </div>
-
-        <div className="flex flex-wrap gap-2 mt-3">
-          <div className="text-xs bg-gray-50 rounded px-2 py-1">
-            <span className="text-gray-500">Price Band: </span>
-            <span className="font-medium text-gray-800">
-              {ipo.price_band ? `₹${ipo.price_band}` : "—"}
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+          {ipo.price_band && (
+            <span style={{ fontSize:11, background:"var(--surface)", border:"1px solid var(--border)",
+              borderRadius:4, padding:"3px 8px", color:"var(--text)" }}>
+              ₹{ipo.price_band}
             </span>
-          </div>
-
-          <div
-            className={`text-xs rounded px-2 py-1 font-semibold ${
-              (ipo.gmp || 0) > 0
-                ? "bg-green-100 text-green-700"
-                : "bg-gray-100 text-gray-500"
-            }`}
-          >
-            GMP: ₹{ipo.gmp || 0}
-            {ipo.listing_gain_pct > 0 && (
-              <span className="ml-1">({ipo.listing_gain_pct}%)</span>
-            )}
-          </div>
-
+          )}
+          <span style={{ fontSize:11, fontWeight:700, padding:"3px 8px", borderRadius:4,
+            background: (ipo.gmp||0) > 0 ? "rgba(0,229,160,0.1)" : "var(--surface)",
+            color: (ipo.gmp||0) > 0 ? "var(--accent)" : "var(--muted)",
+            border:`1px solid ${(ipo.gmp||0) > 0 ? "var(--accent)" : "var(--border)"}` }}>
+            GMP ₹{ipo.gmp || 0}{ipo.listing_gain_pct > 0 && ` (${ipo.listing_gain_pct}%)`}
+          </span>
           {ipo.sentiment && (
-            <div className="text-xs bg-yellow-50 text-yellow-700 rounded px-2 py-1">
+            <span style={{ fontSize:11, padding:"3px 8px", borderRadius:4,
+              background:"rgba(245,197,24,0.1)", color:"var(--warn)",
+              border:"1px solid rgba(245,197,24,0.3)" }}>
               {ipo.sentiment}
-            </div>
+            </span>
           )}
         </div>
       </div>
     );
   }
 
-  // Standard NSE IPO card
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex-1">
-          <h3 className="font-semibold text-gray-900 text-sm leading-tight">{name}</h3>
-          {ipo.symbol && (
-            <p className="text-xs text-gray-400 mt-0.5 font-mono">{ipo.symbol}</p>
-          )}
+    <div style={{ background:"var(--card)", border:"1px solid var(--border)",
+      borderRadius:12, padding:16, display:"flex", flexDirection:"column", gap:10 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+        <div>
+          <div style={{ fontWeight:700, color:"var(--text)", fontSize:14, lineHeight:1.3 }}>{name}</div>
+          {ipo.symbol && <div style={{ fontSize:11, color:"var(--muted)", marginTop:2, fontFamily:"var(--mono)" }}>{ipo.symbol}</div>}
         </div>
         <TypeBadge type={ipo.type} />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
-        {(ipo.issuePrice || ipo.priceRange) && (
-          <div className="bg-gray-50 rounded px-2 py-1.5">
-            <span className="text-gray-500 block">Price</span>
-            <span className="font-semibold text-gray-800">
-              ₹{ipo.issuePrice || ipo.priceRange}
-            </span>
-          </div>
-        )}
-        {(ipo.issueStartDate || ipo.ipoStartDate) && (
-          <div className="bg-gray-50 rounded px-2 py-1.5">
-            <span className="text-gray-500 block">Opens</span>
-            <span className="font-semibold text-gray-800">
-              {ipo.issueStartDate || ipo.ipoStartDate}
-            </span>
-          </div>
-        )}
-        {(ipo.issueEndDate || ipo.ipoEndDate) && (
-          <div className="bg-gray-50 rounded px-2 py-1.5">
-            <span className="text-gray-500 block">Closes</span>
-            <span className="font-semibold text-gray-800">
-              {ipo.issueEndDate || ipo.ipoEndDate}
-            </span>
-          </div>
-        )}
-        {ipo.listingDate && (
-          <div className="bg-gray-50 rounded px-2 py-1.5">
-            <span className="text-gray-500 block">Listed</span>
-            <span className="font-semibold text-gray-800">{ipo.listingDate}</span>
-          </div>
-        )}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+        <StatBox label="Price" value={ipo.issuePrice || ipo.priceRange ? `₹${ipo.issuePrice || ipo.priceRange}` : null} />
+        <StatBox label="Opens" value={ipo.issueStartDate || ipo.ipoStartDate} />
+        <StatBox label="Closes" value={ipo.issueEndDate || ipo.ipoEndDate} />
+        {ipo.listingDate && <StatBox label="Listed" value={ipo.listingDate} />}
+        {ipo.issueSize && <StatBox label="Size" value={`₹${ipo.issueSize} Cr`} />}
         {ipo.subscriptionTimes > 0 && (
-          <div className="bg-indigo-50 rounded px-2 py-1.5 col-span-2">
-            <span className="text-indigo-500 block">Subscribed</span>
-            <span className="font-bold text-indigo-700">{ipo.subscriptionTimes}x</span>
-          </div>
-        )}
-        {ipo.issueSize && (
-          <div className="bg-gray-50 rounded px-2 py-1.5">
-            <span className="text-gray-500 block">Size</span>
-            <span className="font-semibold text-gray-800">₹{ipo.issueSize} Cr</span>
+          <div style={{ background:"rgba(0,229,160,0.08)", border:"1px solid rgba(0,229,160,0.3)",
+            borderRadius:6, padding:"6px 10px", gridColumn:"1/-1" }}>
+            <div style={{ fontSize:10, color:"var(--accent)", marginBottom:2 }}>Subscribed</div>
+            <div style={{ fontSize:14, fontWeight:800, color:"var(--accent)" }}>{ipo.subscriptionTimes}x</div>
           </div>
         )}
       </div>
 
-      {/* GMP badge */}
       {ipo.gmp && (
-        <div className="mt-3 flex items-center gap-2">
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <GmpBadge gmp={ipo.gmp} />
-          {ipo.gmp.sentiment && (
-            <span className="text-xs text-gray-400">{ipo.gmp.sentiment}</span>
-          )}
+          {ipo.gmp.sentiment && <span style={{ fontSize:11, color:"var(--muted)" }}>{ipo.gmp.sentiment}</span>}
         </div>
       )}
 
-      {/* AI Verdict button */}
       {(tab === "Open" || tab === "Upcoming") && (
-        <button
-          onClick={() => onVerdict(name)}
-          className="mt-3 w-full text-xs bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded-lg font-medium transition-colors"
-        >
+        <button onClick={() => onVerdict(name)} style={{
+          width:"100%", padding:"8px 0", borderRadius:8, border:"none", cursor:"pointer",
+          background:"linear-gradient(135deg,#5b8dee,#00e5a0)", color:"#000",
+          fontWeight:700, fontSize:12, letterSpacing:0.5 }}>
           ✨ AI Verdict
         </button>
       )}
@@ -181,49 +129,42 @@ function IpoCard({ ipo, tab, onVerdict }) {
   );
 }
 
-// ── Verdict Modal ─────────────────────────────────────────────────────────────
 function VerdictModal({ company, onClose }) {
   const [verdict, setVerdict] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetch = async () => {
-      try {
-        const res = await api.get(`/api/ipo/verdict/${encodeURIComponent(company)}`);
-        setVerdict(res.data);
-      } catch {
-        setVerdict({ verdict: "Could not fetch AI verdict. Please try again.", company });
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetch();
+    fetch(`/api/ipo/verdict/${encodeURIComponent(company)}`)
+      .then((r) => r.json())
+      .then((data) => setVerdict(data))
+      .catch(() => setVerdict({ verdict: "Could not fetch AI verdict.", company }))
+      .finally(() => setLoading(false));
   }, [company]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="font-bold text-gray-800 text-sm">
-            ✨ AI Verdict — {company}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-          >
-            ×
-          </button>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:50,
+      display:"flex", alignItems:"flex-end", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"var(--card)", border:"1px solid var(--border)",
+        borderRadius:16, width:"100%", maxWidth:480, boxShadow:"0 20px 60px rgba(0,0,0,0.5)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+          padding:"14px 16px", borderBottom:"1px solid var(--border)" }}>
+          <span style={{ fontWeight:700, color:"var(--text)", fontSize:14 }}>✨ AI Verdict — {company}</span>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:"var(--muted)",
+            fontSize:22, cursor:"pointer", lineHeight:1 }}>×</button>
         </div>
-        <div className="p-4">
+        <div style={{ padding:16 }}>
           {loading ? (
-            <div className="flex items-center gap-2 text-gray-500 text-sm py-4 justify-center">
-              <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            <div style={{ display:"flex", alignItems:"center", gap:10, color:"var(--muted)",
+              fontSize:13, padding:"20px 0", justifyContent:"center" }}>
+              <div style={{ width:16, height:16, border:"2px solid var(--accent3)",
+                borderTopColor:"transparent", borderRadius:"50%",
+                animation:"spin 0.8s linear infinite" }} />
               Analysing IPO...
             </div>
           ) : (
             <>
-              {verdict?.gmp && <GmpBadge gmp={verdict.gmp} />}
-              <div className="mt-3 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+              {verdict?.gmp && <div style={{marginBottom:10}}><GmpBadge gmp={verdict.gmp} /></div>}
+              <div style={{ fontSize:13, color:"var(--text)", whiteSpace:"pre-wrap", lineHeight:1.7 }}>
                 {verdict?.verdict}
               </div>
             </>
@@ -234,7 +175,6 @@ function VerdictModal({ company, onClose }) {
   );
 }
 
-// ── Main IPO Page ─────────────────────────────────────────────────────────────
 export default function IPO() {
   const [activeTab, setActiveTab] = useState("Open");
   const [data, setData] = useState({});
@@ -243,120 +183,99 @@ export default function IPO() {
   const [verdictCompany, setVerdictCompany] = useState(null);
 
   useEffect(() => {
-    if (data[activeTab]) return; // already cached
+    if (data[activeTab]) return;
     setLoading(true);
     setError(null);
-    api
-      .get(TAB_ENDPOINTS[activeTab])
-      .then((res) => {
-        setData((prev) => ({ ...prev, [activeTab]: res.data }));
-      })
-      .catch((err) => {
-        setError(err.message || "Failed to load IPO data");
-      })
+    fetch(TAB_ENDPOINTS[activeTab])
+      .then((r) => r.json())
+      .then((d) => setData((prev) => ({ ...prev, [activeTab]: d })))
+      .catch((err) => setError(err.message || "Failed to load IPO data"))
       .finally(() => setLoading(false));
   }, [activeTab]);
 
-  const ipos =
-    data[activeTab]?.ipos ||
-    data[activeTab]?.mainboard ||  // GMP endpoint shape
-    [];
+  const ipos = data[activeTab]?.ipos || [];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 py-6">
+    <div style={{ minHeight:"100vh", background:"var(--bg)", padding:"24px 16px" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div style={{ maxWidth:900, margin:"0 auto" }}>
 
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">📋 IPO Tracker</h1>
-          <p className="text-sm text-gray-500 mt-1">
+        <div style={{ marginBottom:24 }}>
+          <h1 style={{ fontSize:26, fontWeight:800, color:"var(--text)", margin:0 }}>📋 IPO Tracker</h1>
+          <p style={{ fontSize:13, color:"var(--muted)", marginTop:6 }}>
             Live IPO data · GMP from grey market · AI verdicts powered by Groq
           </p>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200 shadow-sm mb-6 overflow-x-auto">
+        <div style={{ display:"flex", gap:4, background:"var(--surface)", borderRadius:12,
+          padding:4, border:"1px solid var(--border)", marginBottom:24, overflowX:"auto" }}>
           {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 min-w-fit px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                activeTab === tab
-                  ? "bg-indigo-600 text-white shadow"
-                  : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
-              }`}
-            >
+            <button key={tab} onClick={() => setActiveTab(tab)} style={{
+              flex:1, minWidth:"fit-content", padding:"8px 14px", borderRadius:8, border:"none",
+              cursor:"pointer", fontSize:13, fontWeight:600, whiteSpace:"nowrap", transition:"all 0.2s",
+              background: activeTab === tab ? "var(--accent3)" : "transparent",
+              color: activeTab === tab ? "#fff" : "var(--muted)" }}>
               {tab === "SME" ? "🏭 SME" : tab}
             </button>
           ))}
         </div>
 
-        {/* SME source note */}
+        {/* SME note */}
         {activeTab === "SME" && (
-          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
-            📌 SME IPO data sourced from grey market tracker (ipowatch.in). Includes GMP + upcoming SME IPOs not available via NSE API.
+          <div style={{ marginBottom:16, background:"rgba(245,197,24,0.08)",
+            border:"1px solid rgba(245,197,24,0.3)", borderRadius:8,
+            padding:"8px 12px", fontSize:12, color:"var(--warn)" }}>
+            📌 SME IPO data sourced from ipowatch.in grey market tracker. NSE API has no SME IPO listing endpoint.
           </div>
         )}
 
-        {/* GMP disclaimer */}
         {data[activeTab]?.updated_at && (
-          <div className="mb-4 text-xs text-gray-400">
-            GMP data updated: {data[activeTab].updated_at} · Grey market data is unofficial
+          <div style={{ marginBottom:12, fontSize:11, color:"var(--muted)" }}>
+            GMP updated: {data[activeTab].updated_at} · Unofficial grey market data
           </div>
         )}
 
-        {/* Loading */}
         {loading && (
-          <div className="flex items-center justify-center py-16 text-gray-400 gap-2">
-            <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+            gap:10, padding:"64px 0", color:"var(--muted)" }}>
+            <div style={{ width:20, height:20, border:"2px solid var(--accent3)",
+              borderTopColor:"transparent", borderRadius:"50%",
+              animation:"spin 0.8s linear infinite" }} />
             Loading IPO data...
           </div>
         )}
 
-        {/* Error */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">
+          <div style={{ background:"rgba(255,71,87,0.1)", border:"1px solid rgba(255,71,87,0.3)",
+            borderRadius:10, padding:"12px 16px", color:"var(--danger)", fontSize:13 }}>
             ⚠️ {error}
           </div>
         )}
 
-        {/* IPO Cards Grid */}
         {!loading && !error && (
-          <>
-            {ipos.length === 0 ? (
-              <div className="text-center py-16 text-gray-400">
-                <div className="text-4xl mb-3">📭</div>
-                <p className="font-medium">No IPOs found in this category</p>
-                <p className="text-sm mt-1">Check back later for updates</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {ipos.map((ipo, i) => (
-                  <IpoCard
-                    key={i}
-                    ipo={ipo}
-                    tab={activeTab}
-                    onVerdict={(name) => setVerdictCompany(name)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
+          ipos.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"64px 0", color:"var(--muted)" }}>
+              <div style={{ fontSize:40, marginBottom:12 }}>📭</div>
+              <div style={{ fontWeight:600, fontSize:15 }}>No IPOs found in this category</div>
+              <div style={{ fontSize:13, marginTop:6 }}>Check back later for updates</div>
+            </div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:16 }}>
+              {ipos.map((ipo, i) => (
+                <IpoCard key={i} ipo={ipo} tab={activeTab} onVerdict={(name) => setVerdictCompany(name)} />
+              ))}
+            </div>
+          )
         )}
 
-        {/* GMP Disclaimer */}
-        <div className="mt-8 text-xs text-gray-400 text-center">
-          ⚠️ GMP data is from the unofficial grey market and is for informational purposes only.
-          It is not a reliable predictor of listing price. Always do your own research.
+        <div style={{ marginTop:32, fontSize:11, color:"var(--muted)", textAlign:"center" }}>
+          ⚠️ GMP is unofficial grey market data for informational purposes only. Not investment advice.
         </div>
       </div>
 
-      {/* Verdict Modal */}
       {verdictCompany && (
-        <VerdictModal
-          company={verdictCompany}
-          onClose={() => setVerdictCompany(null)}
-        />
+        <VerdictModal company={verdictCompany} onClose={() => setVerdictCompany(null)} />
       )}
     </div>
   );
