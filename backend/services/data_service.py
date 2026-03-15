@@ -1,103 +1,89 @@
 import yfinance as yf
 import pandas as pd
-import requests
-import json
+from pathlib import Path
 from typing import Optional
-from datetime import datetime, timedelta
+import logging
 
-# NSE direct API headers - works on cloud
-NSE_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://www.nseindia.com/",
-}
+logger = logging.getLogger(__name__)
 
-def _nse_session():
-    s = requests.Session()
-    s.headers.update(NSE_HEADERS)
-    # Get cookies first
-    try:
-        s.get("https://www.nseindia.com", timeout=10)
-    except Exception:
-        pass
-    return s
+def _try_yfinance(symbol: str, exchange: str):
+    suffix = ".NS" if exchange.upper() == "NSE" else ".BO"
+    return yf.Ticker(f"{symbol.upper()}{suffix}")
 
 def fetch_price_history(symbol: str, period: str = "6mo", exchange: str = "NSE") -> pd.DataFrame:
-    # Try yfinance first
+    # Try yfinance
     try:
-        suffix = ".NS" if exchange.upper() == "NSE" else ".BO"
-        ticker = yf.Ticker(f"{symbol.upper()}{suffix}")
+        ticker = _try_yfinance(symbol, exchange)
         hist = ticker.history(period=period)
         if not hist.empty:
             return hist
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"yfinance failed for {symbol}: {e}")
 
-    # Fallback: NSE direct API
+    # Fallback: NSE library
     try:
-        session = _nse_session()
-        end = datetime.now()
-        start = end - timedelta(days=180)
-        url = (
-            f"https://www.nseindia.com/api/historical/cm/equity"
-            f"?symbol={symbol.upper()}"
-            f"&series=[%22EQ%22]"
-            f"&from={start.strftime('%d-%m-%Y')}"
-            f"&to={end.strftime('%d-%m-%Y')}"
+        from nse import NSE
+        nse = NSE(download_folder=Path("/tmp"))
+        data = nse.equityHistory(
+            symbol=symbol.upper(),
+            series="EQ",
+            start=pd.Timestamp.now() - pd.Timedelta(days=180),
+            end=pd.Timestamp.now()
         )
-        resp = session.get(url, timeout=15)
-        data = resp.json().get("data", [])
-        if data:
-            rows = []
-            for d in data:
-                rows.append({
-                    "Date": pd.to_datetime(d["CH_TIMESTAMP"]),
-                    "Open": float(d.get("CH_OPENING_PRICE", 0)),
-                    "High": float(d.get("CH_TRADE_HIGH_PRICE", 0)),
-                    "Low": float(d.get("CH_TRADE_LOW_PRICE", 0)),
-                    "Close": float(d.get("CH_CLOSING_PRICE", 0)),
-                    "Volume": float(d.get("CH_TOT_TRADED_QTY", 0)),
-                })
-            df = pd.DataFrame(rows).set_index("Date").sort_index()
-            return df
-    except Exception:
-        pass
+        nse.exit()
+        if data is not None and not data.empty:
+            data.index = pd.to_datetime(data.index)
+            # Normalize column names
+            col_map = {
+                "CH_OPENING_PRICE": "Open",
+                "CH_TRADE_HIGH_PRICE": "High",
+                "CH_TRADE_LOW_PRICE": "Low",
+                "CH_CLOSING_PRICE": "Close",
+                "CH_TOT_TRADED_QTY": "Volume",
+                "open": "Open", "high": "High", "low": "Low",
+                "close": "Close", "volume": "Volume",
+            }
+            data = data.rename(columns=col_map)
+            return data.sort_index()
+    except Exception as e:
+        logger.warning(f"NSE library failed for {symbol}: {e}")
 
     return pd.DataFrame()
 
 def fetch_fundamentals(symbol: str, exchange: str = "NSE") -> dict:
-    # Try yfinance first
+    # Try yfinance
     try:
-        suffix = ".NS" if exchange.upper() == "NSE" else ".BO"
-        info = yf.Ticker(f"{symbol.upper()}{suffix}").info
+        info = _try_yfinance(symbol, exchange).info
         if info.get("regularMarketPrice") or info.get("currentPrice"):
-            return _parse_info(info, symbol)
-    except Exception:
-        pass
+            return _parse_yf_info(info, symbol)
+    except Exception as e:
+        logger.warning(f"yfinance fundamentals failed for {symbol}: {e}")
 
-    # Fallback: NSE direct quote API
+    # Fallback: NSE library quote
     try:
-        session = _nse_session()
-        url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol.upper()}"
-        resp = session.get(url, timeout=15)
-        data = resp.json()
-        price_info = data.get("priceInfo", {})
-        meta = data.get("metadata", {})
-        info_obj = data.get("industryInfo", {})
-        current = price_info.get("lastPrice", 0)
-        prev = price_info.get("previousClose", 0)
-        change_pct = round(((current - prev) / prev) * 100, 2) if prev else None
+        from nse import NSE
+        nse = NSE(download_folder=Path("/tmp"))
+        quote = nse.equityMetaInfo(symbol=symbol.upper())
+        price_data = nse.equity(symbol=symbol.upper(), section="trade_info")
+        nse.exit()
+
+        current = None
+        prev = None
+        if price_data:
+            market = price_data.get("marketDeptOrderBook", {})
+            trade = price_data.get("tradeInfo", {})
+            current = market.get("tradeInfo", {}).get("lastPrice") or trade.get("totalTradedVolume")
+
         return {
-            "company_name": meta.get("companyName", symbol),
-            "sector": info_obj.get("macro", "N/A"),
-            "industry": info_obj.get("industry", "N/A"),
+            "company_name": quote.get("companyName", symbol) if quote else symbol,
+            "sector": quote.get("industry", "N/A") if quote else "N/A",
+            "industry": quote.get("industry", "N/A") if quote else "N/A",
             "market_cap": None,
             "current_price": current,
             "prev_close": prev,
-            "day_change_pct": change_pct,
-            "week_52_high": price_info.get("weekHighLow", {}).get("max"),
-            "week_52_low": price_info.get("weekHighLow", {}).get("min"),
+            "day_change_pct": None,
+            "week_52_high": None,
+            "week_52_low": None,
             "pe_ratio": None,
             "forward_pe": None,
             "pb_ratio": None,
@@ -115,9 +101,10 @@ def fetch_fundamentals(symbol: str, exchange: str = "NSE") -> dict:
             "number_of_analysts": None,
         }
     except Exception as e:
-        return {"error": str(e)}
+        logger.error(f"NSE fundamentals failed for {symbol}: {e}")
+        return {"error": str(e), "company_name": symbol}
 
-def _parse_info(info: dict, symbol: str) -> dict:
+def _parse_yf_info(info: dict, symbol: str) -> dict:
     return {
         "company_name": info.get("longName") or info.get("shortName", symbol),
         "sector": info.get("sector", "N/A"),
@@ -147,8 +134,7 @@ def _parse_info(info: dict, symbol: str) -> dict:
 
 def fetch_financial_statements(symbol: str, exchange: str = "NSE") -> dict:
     try:
-        suffix = ".NS" if exchange.upper() == "NSE" else ".BO"
-        ticker = yf.Ticker(f"{symbol.upper()}{suffix}")
+        ticker = _try_yfinance(symbol, exchange)
         income = ticker.financials
         cashflow = ticker.cashflow
         result = {}
