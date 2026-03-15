@@ -1,17 +1,10 @@
 import yfinance as yf
 import pandas as pd
-import requests
+from curl_cffi import requests as cffi_requests
 from typing import Optional
 
 def _get_session():
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-    })
+    session = cffi_requests.Session(impersonate="chrome110")
     return session
 
 def get_ticker(symbol: str, exchange: str = "NSE") -> yf.Ticker:
