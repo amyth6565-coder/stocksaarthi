@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 from pathlib import Path
 from typing import Optional
+from datetime import date, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,7 +12,7 @@ def _try_yfinance(symbol: str, exchange: str):
     return yf.Ticker(f"{symbol.upper()}{suffix}")
 
 def fetch_price_history(symbol: str, period: str = "6mo", exchange: str = "NSE") -> pd.DataFrame:
-    # Try yfinance
+    # Try yfinance first
     try:
         ticker = _try_yfinance(symbol, exchange)
         hist = ticker.history(period=period)
@@ -24,34 +25,36 @@ def fetch_price_history(symbol: str, period: str = "6mo", exchange: str = "NSE")
     try:
         from nse import NSE
         nse = NSE(download_folder=Path("/tmp"))
-        data = nse.equityHistory(
+        to_date = date.today()
+        from_date = to_date - timedelta(days=180)
+        data = nse.fetch_equity_historical_data(
             symbol=symbol.upper(),
-            series="EQ",
-            start=pd.Timestamp.now() - pd.Timedelta(days=180),
-            end=pd.Timestamp.now()
+            from_date=from_date,
+            to_date=to_date,
+            series="EQ"
         )
         nse.exit()
-        if data is not None and not data.empty:
-            data.index = pd.to_datetime(data.index)
-            # Normalize column names
-            col_map = {
-                "CH_OPENING_PRICE": "Open",
-                "CH_TRADE_HIGH_PRICE": "High",
-                "CH_TRADE_LOW_PRICE": "Low",
-                "CH_CLOSING_PRICE": "Close",
-                "CH_TOT_TRADED_QTY": "Volume",
-                "open": "Open", "high": "High", "low": "Low",
-                "close": "Close", "volume": "Volume",
-            }
-            data = data.rename(columns=col_map)
-            return data.sort_index()
+        if data:
+            rows = []
+            for d in data:
+                rows.append({
+                    "Date": pd.to_datetime(d.get("CH_TIMESTAMP") or d.get("date")),
+                    "Open": float(d.get("CH_OPENING_PRICE") or d.get("open") or 0),
+                    "High": float(d.get("CH_TRADE_HIGH_PRICE") or d.get("high") or 0),
+                    "Low": float(d.get("CH_TRADE_LOW_PRICE") or d.get("low") or 0),
+                    "Close": float(d.get("CH_CLOSING_PRICE") or d.get("close") or 0),
+                    "Volume": float(d.get("CH_TOT_TRADED_QTY") or d.get("volume") or 0),
+                })
+            df = pd.DataFrame(rows).set_index("Date").sort_index()
+            if not df.empty:
+                return df
     except Exception as e:
-        logger.warning(f"NSE library failed for {symbol}: {e}")
+        logger.warning(f"NSE library price history failed for {symbol}: {e}")
 
     return pd.DataFrame()
 
 def fetch_fundamentals(symbol: str, exchange: str = "NSE") -> dict:
-    # Try yfinance
+    # Try yfinance first
     try:
         info = _try_yfinance(symbol, exchange).info
         if info.get("regularMarketPrice") or info.get("currentPrice"):
@@ -59,50 +62,46 @@ def fetch_fundamentals(symbol: str, exchange: str = "NSE") -> dict:
     except Exception as e:
         logger.warning(f"yfinance fundamentals failed for {symbol}: {e}")
 
-    # Fallback: NSE library quote
+    # Fallback: NSE equityQuote
     try:
         from nse import NSE
         nse = NSE(download_folder=Path("/tmp"))
-        quote = nse.equityMetaInfo(symbol=symbol.upper())
-        price_data = nse.equity(symbol=symbol.upper(), section="trade_info")
+        quote = nse.equityQuote(symbol.upper())
         nse.exit()
-
-        current = None
-        prev = None
-        if price_data:
-            market = price_data.get("marketDeptOrderBook", {})
-            trade = price_data.get("tradeInfo", {})
-            current = market.get("tradeInfo", {}).get("lastPrice") or trade.get("totalTradedVolume")
-
-        return {
-            "company_name": quote.get("companyName", symbol) if quote else symbol,
-            "sector": quote.get("industry", "N/A") if quote else "N/A",
-            "industry": quote.get("industry", "N/A") if quote else "N/A",
-            "market_cap": None,
-            "current_price": current,
-            "prev_close": prev,
-            "day_change_pct": None,
-            "week_52_high": None,
-            "week_52_low": None,
-            "pe_ratio": None,
-            "forward_pe": None,
-            "pb_ratio": None,
-            "roe": None,
-            "roa": None,
-            "profit_margin": None,
-            "operating_margin": None,
-            "revenue_growth": None,
-            "earnings_growth": None,
-            "debt_to_equity": None,
-            "current_ratio": None,
-            "dividend_yield": None,
-            "analyst_recommendation": None,
-            "target_mean_price": None,
-            "number_of_analysts": None,
-        }
+        if quote:
+            current = float(quote.get("lastPrice") or quote.get("ltp") or 0)
+            prev = float(quote.get("previousClose") or quote.get("prevClose") or 0)
+            change_pct = round(((current - prev) / prev) * 100, 2) if prev else None
+            return {
+                "company_name": quote.get("companyName") or quote.get("symbol", symbol),
+                "sector": quote.get("industry", "N/A"),
+                "industry": quote.get("industry", "N/A"),
+                "market_cap": quote.get("totalMarketCap") or quote.get("marketCap"),
+                "current_price": current,
+                "prev_close": prev,
+                "day_change_pct": change_pct,
+                "week_52_high": quote.get("weekHighLow", {}).get("max") if isinstance(quote.get("weekHighLow"), dict) else quote.get("high52"),
+                "week_52_low": quote.get("weekHighLow", {}).get("min") if isinstance(quote.get("weekHighLow"), dict) else quote.get("low52"),
+                "pe_ratio": quote.get("pe"),
+                "forward_pe": None,
+                "pb_ratio": quote.get("pb"),
+                "roe": None,
+                "roa": None,
+                "profit_margin": None,
+                "operating_margin": None,
+                "revenue_growth": None,
+                "earnings_growth": None,
+                "debt_to_equity": None,
+                "current_ratio": None,
+                "dividend_yield": None,
+                "analyst_recommendation": None,
+                "target_mean_price": None,
+                "number_of_analysts": None,
+            }
     except Exception as e:
         logger.error(f"NSE fundamentals failed for {symbol}: {e}")
-        return {"error": str(e), "company_name": symbol}
+
+    return {"error": f"No data found for {symbol}", "company_name": symbol}
 
 def _parse_yf_info(info: dict, symbol: str) -> dict:
     return {
