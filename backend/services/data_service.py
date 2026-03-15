@@ -1,18 +1,15 @@
 import yfinance as yf
 import pandas as pd
-from curl_cffi import requests as cffi_requests
+import requests
 from typing import Optional
-
-def _get_session():
-    session = cffi_requests.Session(impersonate="chrome110")
-    return session
 
 def get_ticker(symbol: str, exchange: str = "NSE") -> yf.Ticker:
     suffix = ".NS" if exchange.upper() == "NSE" else ".BO"
-    return yf.Ticker(f"{symbol.upper()}{suffix}", session=_get_session())
+    return yf.Ticker(f"{symbol.upper()}{suffix}")
 
 def fetch_price_history(symbol: str, period: str = "6mo", exchange: str = "NSE") -> pd.DataFrame:
     try:
+        yf.set_tz_cache_location("/tmp")
         ticker = get_ticker(symbol, exchange)
         hist = ticker.history(period=period)
         if hist.empty:
