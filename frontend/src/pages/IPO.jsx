@@ -100,7 +100,7 @@ function IpoCard({ ipo, tab, onVerdict }) {
         <StatBox label="Opens" value={ipo.issueStartDate || ipo.ipoStartDate} />
         <StatBox label="Closes" value={ipo.issueEndDate || ipo.ipoEndDate} />
         {ipo.listingDate && <StatBox label="Listed" value={ipo.listingDate} />}
-        {ipo.issueSize && <StatBox label="Size" value={`₹${ipo.issueSize} Cr`} />}
+        {ipo.issueSize && <StatBox label="Size" value={ipo.issueSize} />}
         {ipo.subscriptionTimes > 0 && (
           <div style={{ background:"rgba(0,229,160,0.08)", border:"1px solid rgba(0,229,160,0.3)",
             borderRadius:6, padding:"6px 10px", gridColumn:"1/-1" }}>

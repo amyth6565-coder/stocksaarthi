@@ -12,6 +12,25 @@ from services.gmp_service import fetch_gmp_data, get_gmp_for_ipo
 import logging
 
 logger = logging.getLogger(__name__)
+
+def _calc_issue_size_cr(ipo: dict) -> str:
+    """Calculate issue size in crores from shares offered x issue price."""
+    try:
+        shares = float(ipo.get("noOfSharesOffered") or 0)
+        price_str = str(ipo.get("issuePrice", "") or "")
+        # Extract highest price from strings like "Rs.304 to Rs.320" or "Rs.519"
+        import re
+        prices = re.findall(r"[\d.]+", price_str)
+        if not prices:
+            return "N/A"
+        price = float(max(prices, key=float))
+        if shares > 0 and price > 0:
+            cr = round((shares * price) / 1e7, 2)
+            return f"{cr} Cr"
+        return "N/A"
+    except Exception:
+        return "N/A"
+
 router = APIRouter(prefix="/api/ipo", tags=["ipo"])
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
@@ -58,7 +77,7 @@ async def get_open_ipos():
                 "issueStartDate": ipo.get("issueStartDate", ""),
                 "issueEndDate": ipo.get("issueEndDate", ""),
                 "issuePrice": ipo.get("issuePrice", ""),
-                "issueSize": ipo.get("issueSize", ""),
+                "issueSize": _calc_issue_size_cr(ipo),
                 "status": ipo.get("status", ""),
                 "noOfSharesBid": ipo.get("noOfSharesBid", 0),
                 "noOfSharesOffered": ipo.get("noOfSharesOffered", 0),
@@ -93,7 +112,7 @@ async def get_upcoming_ipos():
                 "issueStartDate": ipo.get("issueStartDate", ""),
                 "issueEndDate": ipo.get("issueEndDate", ""),
                 "issuePrice": ipo.get("issuePrice", ""),
-                "issueSize": ipo.get("issueSize", ""),
+                "issueSize": _calc_issue_size_cr(ipo),
                 "status": ipo.get("status", ""),
                 "type": _ipo_type(ipo),
                 "gmp": get_gmp_for_ipo(ipo.get("companyName", ""), gmp_data),
