@@ -2,10 +2,10 @@
   --bg: #080c10; --surface: #0d1318; --card: #111820; --border: #1e2d3d;
   --accent: #00e5a0; --accent2: #ff6b35; --accent3: #5b8dee;
   --warn: #f5c518; --danger: #ff4757; --text: #e8edf2; --muted: #6b7f8e;
-  --mono: 'Space Mono', monospace; --sans: 'Syne', sans-serif;
+  --mono: 'Space Mono', monospace; --sans: 'Inter', sans-serif; --display: 'Clash Display', sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-family: var(--sans), system-ui, sans-serif; min-height: 100vh; }
 body::before {
   content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
   background-image: linear-gradient(rgba(0,229,160,0.025) 1px,transparent 1px), linear-gradient(90deg,rgba(0,229,160,0.025) 1px,transparent 1px);

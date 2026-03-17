@@ -36,7 +36,7 @@ export default function Dashboard() {
         <div style={{ display: 'inline-block', fontFamily: 'var(--mono)', fontSize: '0.65rem', color: 'var(--accent)', background: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.2)', padding: '4px 14px', borderRadius: 2, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>
           Technical + Fundamental + AI
         </div>
-        <h1 style={{ fontSize: 'clamp(1.8rem, 5vw, 3.2rem)', fontWeight: 800, lineHeight: 1.1, letterSpacing: -1, marginBottom: 12 }}>
+        <h1 style={{ fontSize: 'clamp(1.8rem, 5vw, 3.2rem)', fontWeight: 800, lineHeight: 1.1, letterSpacing: -1, marginBottom: 12, fontFamily: 'var(--display)' }}>
           Should you <span style={{ color: 'var(--accent)' }}>buy</span> this<br />Indian stock?
         </h1>
         <p style={{ fontFamily: 'var(--mono)', color: 'var(--muted)', fontSize: '0.82rem', marginBottom: 28 }}>
@@ -56,7 +56,7 @@ export default function Dashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 4, padding: '20px 24px', marginBottom: 24 }}>
             <div style={{ width: 28, height: 28, flexShrink: 0, border: '3px solid var(--border)', borderTop: '3px solid var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
             <div>
-              <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 4 }}>Analysing stock...</div>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 4, fontFamily: 'var(--sans)' }}>Analysing stock...</div>
               <div style={{ fontFamily: 'var(--mono)', fontSize: '0.68rem', color: 'var(--muted)', lineHeight: 1.6 }}>Fetching data → Calculating indicators → AI verdict</div>
             </div>
           </div>
@@ -66,7 +66,7 @@ export default function Dashboard() {
           <div ref={resultRef}>
             <div className="company-header">
               <div>
-                <div style={{ fontSize: 'clamp(1.2rem, 3vw, 1.6rem)', fontWeight: 800, letterSpacing: -0.5, marginBottom: 8 }}>{data.company?.name}</div>
+                <div style={{ fontSize: 'clamp(1.2rem, 3vw, 1.6rem)', fontWeight: 800, letterSpacing: -0.5, marginBottom: 8, fontFamily: 'var(--display)' }}>{data.company?.name}</div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {[
                     { v: `${data.symbol}.${data.exchange}`, c: 'var(--accent)', bg: 'rgba(0,229,160,0.1)' },
